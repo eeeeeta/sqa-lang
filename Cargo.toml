@@ -1,0 +1,8 @@
+[package]
+name = "sqa-lang"
+version = "0.1.0"
+authors = ["eeeeeta <eeeeeta@users.noreply.github.com>"]
+
+[dependencies]
+peg = { git = "https://github.com/eeeeeta/rust-peg", features = ["explicit-failure"] }
+chrono = "0.2"

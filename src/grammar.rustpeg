@@ -1,0 +1,111 @@
+use ast::Expr;
+use ast::QuoteStmt;
+use ast::Command;
+use ast::Stmt;
+use ast::Program;
+use chrono::Duration;
+
+#[pub]
+program -> Program
+    = stmts:(__ s:statement ";" __ {s})* { stmts }
+
+#[expected = "statement"]
+statement -> Stmt
+    = "cue " n:cue_identifier " " b:block { Stmt::CueBlock(n, b) }
+    / "then " b:block { Stmt::ThenBlock(b) }
+    / c:command { Stmt::Command(c) }
+
+#[expected = "block"]
+block -> Vec<Stmt>
+    = "{" __ b:(__ s:statement ";" {s})* __ "}" { b }
+
+#[expected = "command"]
+#[pub]
+command -> Command
+    = label:label? __ then:"then"? __ after:("after " d:duration {d})? __ verb:identifier __ dirobj:expr? __ idobj:("@ " e:expr {e})? __ qstmts:(q:quote_stmt __ {q})* {
+        Command {
+            label: label,
+            after_prev: then.is_some(),
+            pre: after.unwrap_or(Duration::nanoseconds(0)),
+            verb: verb,
+            direct_obj: dirobj,
+            ind_obj: idobj,
+            arguments: qstmts
+        }
+    }
+
+#[expected = "label"]
+label -> String
+    = "." i:identifier ":" { i.to_string() }
+
+#[expected = "list of command arguments"]
+#[pub]
+quote_stmt -> QuoteStmt
+    = "'" i:identifier " " e:expr { QuoteStmt::KeyValue(i, Box::new(e)) }
+    / "'" i:identifier { QuoteStmt::Key(i) }
+
+#[expected = "expression"]
+expr -> Expr
+    = s:strlit { Expr::StringLiteral(s) }
+    / v:volume { Expr::VolumeDecibels(v) }
+    / d:duration { Expr::Duration(d) }
+    / i:identifier { Expr::Identifier(i) }
+
+volume -> f64
+    = [-0-9]+ ("." [0-9]+)? {? match_str.parse().map_err(|_| "volume") }
+    / "-inf" { ::std::f64::NEG_INFINITY }
+
+#[pub]
+duration -> Duration
+    = h:(a:integer "h" {a})? __ m:(a:integer "m" {a})? __ s:(a:integer "s" {a})? __ ms:(a:integer "ms" {a})? {?
+        let mut dur = Duration::nanoseconds(0);
+        let mut one_matched = false;
+        if let Some(h) = h { dur = dur + Duration::hours(h); one_matched = true; };
+        if let Some(m) = m { dur = dur + Duration::minutes(m); one_matched = true; };
+        if let Some(s) = s { dur = dur + Duration::seconds(s); one_matched = true; };
+        if let Some(ms) = ms { dur = dur + Duration::milliseconds(ms); one_matched = true; };
+        if !one_matched {
+            Err("duration")
+        }
+        else {
+            Ok(dur)
+        }
+    }
+
+integer -> i64
+    = [0-9]+ {? match_str.parse().map_err(|_| "integer") }
+
+#[expected = "identifier"]
+#[pub]
+identifier -> String
+    = !reserved_word [a-zA-Z0-9\-_]+ { match_str.to_string() }
+
+reserved_word -> ()
+    = "after"
+    / "then"
+    / "cue"
+
+#[expected = "cue name"]
+cue_identifier -> String
+    = !reserved_word [a-zA-Z0-9\-_\.]+ { match_str.to_string() }
+
+#[expected = "string literal"]
+#[pub]
+strlit -> String
+    = '"' s:litchr* '"' { s.into_iter().collect() }
+
+#[expected = "any character or escape sequence"]
+litchr -> char
+    = "\\\"" { '"' }
+    / !'"' . { match_str.chars().next().unwrap() }
+
+#[expected = "whitespace"]
+__ -> ()
+    = (" " / "\t" / eol)*
+
+eol
+    = "\n"
+    / "\r\n"
+    / "\r"
+    / "\u{2028}"
+    / "\u{2029}"
