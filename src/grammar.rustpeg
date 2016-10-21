@@ -47,8 +47,8 @@ quote_stmt -> QuoteStmt
 #[expected = "expression"]
 expr -> Expr
     = s:strlit { Expr::StringLiteral(s) }
-    / v:volume { Expr::VolumeDecibels(v) }
     / d:duration { Expr::Duration(d) }
+    / v:volume { Expr::VolumeDecibels(v) }
     / i:identifier { Expr::Identifier(i) }
 
 volume -> f64
